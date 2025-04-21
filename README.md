@@ -1,4 +1,5 @@
-# SugerCode.js
+# NejiCode.js
+
 A lightweight and flexible game library powered by WebGL
 
 - Render with pure WebGL
