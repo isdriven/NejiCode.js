@@ -1,8 +1,7 @@
-/* SugerCode.js 
+/* NejiCode.js 
  *  Author: isdriven
- *  This is Game Library.
- *  canvas with WebGL
- */
+ *  This is WebGL Game Library.
+  */
 
 const FPS = 60;
 const entities = [];
