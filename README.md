@@ -307,7 +307,7 @@ music.stop();
 Sound effects are routed to a dedicated single channel.
 Music playback supports crossfading between two channels for smooth transitions.
 
-## 入力
+## Input
 
 NejiCode supports both gamepad input and touch/click input.
 
