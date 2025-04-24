@@ -16,7 +16,7 @@ All APIs are provided as ES modules via export.
 
 ### startWorld(game screen width, game screen height)
 
-```javascript
+```vue
 <script setup>
   import { startWorld } from "NejiCode"
 
@@ -82,7 +82,7 @@ Only evenly spaced sprites (uniform grid) are supported.
 Each Entity has an update() method and can be fully controlled through its lifetime.
 However, by using Gear, you can define reusable behavior logic that can be triggered based on conditions or timing.
 
-```javascript
+```vue
 <script setup>
   import { useEntity, useGear } from "NejiCode"
 
@@ -100,7 +100,7 @@ However, by using Gear, you can define reusable behavior logic that can be trigg
 A Gear is created using useGear() and operates based on a chain of method calls.
 Each method in the chain is executed in the order it is defined.
 
-```javascript
+```vue
 <script setup>
   import { useEntity, useGear } from "NejiCode"
 
@@ -170,6 +170,7 @@ const chara = useEntity({
 And it will appear right in the center of the screen.
 The coordinate system is structured as follows:
 
+```
      +y
       |
       |
@@ -177,6 +178,7 @@ The coordinate system is structured as follows:
       |
       |
      -y
+```
 
 So for example, to position something slightly below the center, you can set:
 
