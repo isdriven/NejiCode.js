@@ -1,6 +1,6 @@
-# NejiCode.js
+# NejiCode.javascript
 
-NejiCode.js is a 2D game engine developed by NejiCode, a small independent game development group in Japan.
+NejiCode.javascript is a 2D game engine developed by NejiCode, a small independent game development group in Japan.
 It was originally created for internal use in our own game projects.
 
 While the source code of our games will remain private, the core engine is open source, and we plan to gradually release additional modules and extensions as well.
@@ -12,11 +12,11 @@ This engine is tailored to our specific development needs, which means some feat
 Use it within JavaScript module environments such as Vue or Vite.
 All APIs are provided as ES modules via export.
 
-## APIs
+## Setup
 
 ### startWorld(game screen width, game screen height)
 
-```js
+```javascript
 <script setup>
   import { startWorld } from "NejiCode"
 
@@ -32,7 +32,7 @@ The canvas will automatically scale to fit the current display size.
 While NejiCode is not a full ECS (Entity-Component System), at its core lies the Entity.
 You can create and use an Entity like this:
 
-```js
+```javascript
   import { useEntity } from "NejiCode"
   const chara = await useEntity({src:"chara.png"});
 ```
@@ -47,7 +47,7 @@ Because loading is asynchronous, you have to await each entity individually.
 
 You can customize an Entity with the following properties:
 
-```js
+```javascript
 import { useEntity } from "NejiCode"
 const chara = await useEntity({
   src: "chara.png",       // Path to the image file
@@ -82,7 +82,7 @@ Only evenly spaced sprites (uniform grid) are supported.
 Each Entity has an update() method and can be fully controlled through its lifetime.
 However, by using Gear, you can define reusable behavior logic that can be triggered based on conditions or timing.
 
-```js
+```javascript
 <script setup>
   import { useEntity, useGear } from "NejiCode"
 
@@ -100,7 +100,7 @@ However, by using Gear, you can define reusable behavior logic that can be trigg
 A Gear is created using useGear() and operates based on a chain of method calls.
 Each method in the chain is executed in the order it is defined.
 
-```js
+```javascript
 <script setup>
   import { useEntity, useGear } from "NejiCode"
 
@@ -117,7 +117,7 @@ Each method in the chain is executed in the order it is defined.
 
 While end() and checkEnd() exist, in most cases the following pattern is more versatile and preferred:
 
-```js
+```javascript
 useGear.check((e)=>e.attacking).call(()=> /* do something */)
 ```
 This setup acts like a soft loop: it checks a condition, performs an action, and waits again.
@@ -127,7 +127,7 @@ In many cases, this pattern is flexible enough for a wide range of use cases.
 
 Entities and Gears can be created and used even in an "empty" state.
 
-```js
+```javascript
 // EmptyEntity
 useEntity({
   update(){
@@ -136,7 +136,7 @@ useEntity({
 })
 ```
 
-```js
+```javascript
 // Empty Gear
 useGear(false).check(()=>startFlag == true).call()
 ```
@@ -160,7 +160,7 @@ Additionally, the anchor point of images is set to 0.5 by default — meaning th
 Because of this setup, there's no need to calculate offsets using screenWidth, screenHeight, or image width and height just to center something.
 You can simply do:
 
-```js
+```javascript
 const chara = useEntity({
   src: "chara.png",
   x:0, y:0
@@ -180,7 +180,7 @@ The coordinate system is structured as follows:
 
 So for example, to position something slightly below the center, you can set:
 
-```js
+```javascript
 x:0, y:-200
 ```
 
@@ -188,7 +188,7 @@ This makes it very intuitive to position elements relative to the center of the 
 
 ### Nested Entities
 
-```js
+```javascript
 const chara = await useEntity({src:"chara.png"})
 const weapon = await useEntity({src:"weapon.png"})
 chara.has(weapon)
@@ -208,7 +208,7 @@ The anchor of the parent entity does not affect the positioning of its children.
 Especially in RPGs and other games with large fields, you may want to move the camera itself to control what part of the world is visible.
 In NejiCode, you can do this by shifting the entire drawing area using the camera:
 
-```js
+```javascript
 useCamera(x=0, y=0, scale=1, rotate=0);
 ```
 
@@ -224,7 +224,7 @@ Once you've created a behavior recipe using Gear, there are more ways to reuse a
 An Entity can be fully cloned without reloading its image.
 This allows you to quickly duplicate entities with different properties.
 
-```js
+```javascript
 const bullet = useEntity({src:"bullet.png", alpha: 0})
 bullet.clone({alpha:1,x:10,y:10})
 ```
@@ -234,7 +234,7 @@ bullet.clone({alpha:1,x:10,y:10})
 A Gear can be used not only by attaching it to an entity, but also by driving entities at runtime.
 This lets you control multiple entities using a single Gear instance.
 
-```js
+```javascript
 const gear = useGear();
 gear.drive(bullet1); // 
 gear.drive(bullet2); // 
@@ -254,7 +254,7 @@ The function signature is:
 ``` useUi(tag, style, className, listener) ```
 
 
-```js
+```javascript
   const dom = useUi("div", {backgroundColor: "black"}, "button", {onPress:(e)=>{} })
   dom.innerText = "push me";
 ```
@@ -273,7 +273,7 @@ However, if you want to render text directly onto the canvas, NejiCode supports 
 To draw text on the canvas, you typically need a font sprite sheet prepared in advance.
 NejiCode includes a built-in font, so if you're using alphanumeric characters, you can display text by simply specifying the string:
 
-```js
+```javascript
 const text = useText("damage!!", {
   x: 0, y: 0, rotate: 0, scale: 1,
   life: 20 // Displays for 20ms. Set to 0 to keep it visible indefinitely.
@@ -293,7 +293,7 @@ This is useful for effects like floating damage numbers, and provides fine contr
 
 NejiCode supports both sound effects and background music.
 
-```js
+```javascript
 const se = await useSound({src:"sound.mp3"});
 se.play();
 
@@ -309,7 +309,7 @@ Music playback supports crossfading between two channels for smooth transitions.
 
 NejiCode supports both gamepad input and touch/click input.
 
-```js
+```javascript
 // gamePad
 const input = useInput("gamePad.leftStick");
 input() // return exsample {pressed:true, pressedTime:0~, angle:0, magnitude:1}
@@ -339,7 +339,7 @@ input() // return exsample {pressed:true, pressedTime:0~, angle:0, magnitude:1}
 
 You can check whether an entity is being touched (or clicked) using the "touchMe.pressed" input:
 
-```js
+```javascript
 useGear().check( (e)=> useInput("touchMe.pressed", e) )
 ```
 
