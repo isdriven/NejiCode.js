@@ -106,8 +106,8 @@ Each method in the chain is executed in the order it is defined.
 
   useGear().wait(10) // Waits for 10ms.
   useGear().set({ x: 10 }) // Sets a property to a specific value.
-  useGear().put({x:(e)=> e.x + 1 }) // 毎フレーム、指定のプロパティを変更します。
-  //  引数はEntityです。 変更後の値を返してください。
+  useGear().put({x:(e)=> e.x + 1 }) // Modifies a property on every frame.
+   //  The function receives the Entity as an argument and returns the new value.
   useGear().check(e => e.x > 10) // Executes the next step only if the condition returns true.
   useGear().call(e => { /* Do something */ }) // Calls the given function with the entity as the argument.
   useGear().end(() => { /* Called on end */ }) // Stops the gear from looping. Optional function runs on end.
