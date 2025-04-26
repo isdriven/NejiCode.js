@@ -1,4 +1,4 @@
-# NejiCode.javascript
+# NejiCode.js
 
 NejiCode.javascript is a 2D game engine developed by NejiCode, a small independent game development group in Japan.
 It was originally created for internal use in our own game projects.
@@ -346,3 +346,4 @@ useGear().check( (e)=> useInput("touchMe.pressed", e) )
 ```
 
 This will return true only if the entity is currently being touched/clicked.
+
