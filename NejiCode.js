@@ -48,7 +48,6 @@ function resume(){
 }
 
 export function pauseAndResumeWorld(){
-  // world全体をpauseしたり、resumeする。
   beatIsActive = !beatIsActive
 }
 
@@ -73,7 +72,6 @@ export function startWorld(_fieldX, _fieldY) {
   canvas.height = canvas.clientHeight
   canvas.style.margin = "auto auto";  
 
-  // for Ui
   const parent = canvas.parentElement;
   if (!parent) throw new Error("Canvas has no parent element.");
   parent.style.position = "relative";
@@ -123,7 +121,7 @@ function adjustField() {
   const scaleX = innerWidth / fieldX;
   const scaleY = innerHeight / fieldY;
   fieldScale = Math.min(scaleX, scaleY);
-  fieldScale = Math.min(1, fieldScale); // 最大1に抑える制限が必要なら
+  fieldScale = Math.min(1, fieldScale);
 
   let displayWidth, displayHeight;
   
@@ -142,14 +140,11 @@ function adjustField() {
   canvas.style.height = `${displayHeight}px`;
   canvas.width = displayWidth;
   canvas.height = displayHeight;
-  //console.log( canvas.style.x, canvas.style.y )
   uiLayer.style.width = `${displayWidth}px`;
   uiLayer.style.height = `${displayHeight}px`;
 
   if (renderer) {
     renderer.gl.viewport(0, 0, canvas.width, canvas.height);
-    //renderer = new WebGLRenderer(canvas);
-    //renderer.gl.clearColor(0, 0, 0, 1);
   }
 }
 // ----- Gear -----
@@ -481,24 +476,16 @@ class Matrix2D {
       this.b * mat.e + this.d * mat.f + this.f
     );
   }
-
   translate(x, y) {
     return this.multiply(new Matrix2D(1, 0, 0, 1, x, y));
   }
-
   rotate(rad) {
     const cos = Math.cos(rad), sin = Math.sin(rad);
     return this.multiply(new Matrix2D(cos, sin, -sin, cos, 0, 0));
   }
-
   scale(sx, sy) {
     return this.multiply(new Matrix2D(sx, 0, 0, sy, 0, 0));
   }
-
-  applyToContext(ctx) {
-    ctx.setTransform(this.a, this.b, this.c, this.d, this.e, this.f);
-  }
-
   applyToPoint(x, y) {
     return {
       x: this.a * x + this.c * y + this.e,
