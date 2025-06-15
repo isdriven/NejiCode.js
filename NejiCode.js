@@ -99,9 +99,7 @@ export function startWorld(_fieldX, _fieldY) {
   }  
 
   renderer = new WebGLRenderer(canvas);
-  //renderer.gl.clearColor(0, 0, 0, 1);
   renderer.gl.clearColor(255, 255, 255, 1);
-
   if (!canvas) { throw new Error(`Canvas not found: ${config.canvasSelector}`);}
 
   adjustField();
@@ -159,12 +157,29 @@ export function useGear() {
   return new Gear();
 }
 
+export function pauseGear(entity,tagName){
+  entity.gears.forEach(g=>{
+    if( g.tag && g.tag == tagName ){
+      g.pause = true;
+    }
+  })
+}
+
+export function resumeGear(entity, tagName){
+  entity.gears.forEach(g=>{
+    if( g.tag && g.tag == tagName ){
+      g.pause = false;
+    }
+  })
+}
+
 class Gear {
   constructor() {
     this.commandLines = [];
     this.currentIndex = 0;
     this.valid = true;
     this.gearTime = -1;
+    this.pause = false;
   }
   
   check(f){ this.commandLines.push({ type: "check", func: f });  return this; }
@@ -185,6 +200,7 @@ class Gear {
   }
   
   run(entity){
+    if( this.pause ){ return; }
     const command = this.commandLines[this.currentIndex];
     if( typeof command == "undefined" ){
       this.resetCommand();
@@ -280,7 +296,7 @@ function applyGear(entity) {
     entity.children.forEach(child => applyGear(child));
   }
 }
-export async function useEntity(args) {
+export async function useEntity(args={}) {
   if( args.scale ){
     args.scaleX = args.scale;
     args.scaleY = args.scale;
@@ -309,6 +325,7 @@ class Entity {
     this.children = [];
     this.gears = [];
     this.drivers = [];
+    this.mask = null;
 
     entities.push(this);
   }
@@ -333,10 +350,15 @@ class Entity {
     });
   }
   getLocalMatrix() {
+    const scaleXRate = Math.max(1 - ((this.cropLeft?? 0) + (this.cropRight??0)), 0);
+    const scaleYRate = Math.max(1 - ((this.cropTop??0) + (this.cropBottom??0)), 0);
+    const scaleX = (this.scaleX?? 1 ) * scaleXRate;
+    const scaleY = (this.scaleY?? 1 ) * scaleYRate;
+
     return Matrix2D.identity()
       .translate(this.x ?? 0, this.y ?? 0)
       .rotate((this.rotate ?? 0) * Math.PI / 180)
-      .scale(this.scaleX ?? 1, this.scaleY ?? 1);
+      .scale(scaleX, scaleY);
   }
   getWorldMatrix() {
     let mat = Matrix2D.identity();
@@ -406,6 +428,9 @@ class Entity {
     if (idx !== -1) {
       entities.splice(idx, 1);
     }
+    
+    this.children.forEach(c=>c.removeSelf())
+
     if (this.parent) {
       const childIdx = this.parent.children.findIndex(c => c.uuid === this.uuid);
       if (childIdx !== -1) {
@@ -553,6 +578,51 @@ class WebGLRenderer {
     }
     return program;
   }
+
+  createMaskedShaderProgram() {
+    const gl = this.gl;
+  
+    const vsSource = `
+      attribute vec2 a_position;
+      attribute vec2 a_texcoord;
+      uniform mat3 u_matrix;
+      varying vec2 v_texcoord;
+      void main() {
+        vec3 pos = u_matrix * vec3(a_position, 1.0);
+        gl_Position = vec4(pos.xy, 0.0, 1.0);
+        v_texcoord = a_texcoord;
+      }
+    `;
+  
+    const fsSource = `
+      precision mediump float;
+      varying vec2 v_texcoord;
+      uniform sampler2D u_texture;
+      uniform sampler2D u_mask;
+      uniform float u_alpha;
+      void main() {
+        vec4 color = texture2D(u_texture, v_texcoord);
+        float maskAlpha = texture2D(u_mask, v_texcoord).a;
+        gl_FragColor = vec4(color.rgb, color.a * maskAlpha * u_alpha);
+      }
+    `;
+  
+    const program = this.createProgram(
+      this.compileShader(gl.VERTEX_SHADER, vsSource),
+      this.compileShader(gl.FRAGMENT_SHADER, fsSource)
+    );
+  
+    return {
+      program,
+      u_matrix: gl.getUniformLocation(program, "u_matrix"),
+      u_alpha: gl.getUniformLocation(program, "u_alpha"),
+      u_texture: gl.getUniformLocation(program, "u_texture"),
+      u_mask: gl.getUniformLocation(program, "u_mask"),
+      a_position: gl.getAttribLocation(program, "a_position"),
+      a_texcoord: gl.getAttribLocation(program, "a_texcoord"),
+    };
+  }
+
   initBuffers() {
     const gl = this.gl;
 
@@ -605,12 +675,12 @@ class WebGLRenderer {
   setSpriteUV(entity) {
     const gl = this.gl;
   
-    const imgW = entity.image.width;
-    const imgH = entity.image.height;
+    const imgW = entity.width ? entity.width : entity.image.width;
+    const imgH = entity.height ? entity.height : entity.image.height;
     const frameW = entity.frameWidth || imgW;
     const frameH = entity.frameHeight || imgH;
     const frameIndex = entity.frame ?? 0;
-
+  
     const cols = Math.floor(imgW / frameW);
     const row = Math.floor(frameIndex / cols);
     const col = frameIndex % cols;
@@ -620,16 +690,113 @@ class WebGLRenderer {
     const u1 = ((col + 1) * frameW) / imgW;
     const v1 = ((row + 1) * frameH) / imgH;
   
+    // crop
+    const cropLeft = entity.cropLeft != null ? entity.cropLeft : 0;
+    const cropRight = entity.cropRight != null ? entity.cropRight : 0;
+    const cropTop = entity.cropTop != null ? entity.cropTop : 0;
+    const cropBottom = entity.cropBottom != null ? entity.cropBottom : 0;
+    
+    const uStart = u0 + (u1-u0) * cropLeft
+    const uEnd = u1 - (u1 - u0) * cropRight
+    const vStart = v0 + (v1 - v0) * cropTop;
+    const vEnd = v1 - (v1 - v0) * cropBottom;
+    
+    // UVバッファ更新
     gl.bindBuffer(gl.ARRAY_BUFFER, this.texcoordBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-      u0, v1, u1, v1, u0, v0,
-      u0, v0, u1, v1, u1, v0
+      uStart, vEnd, // 左下
+      uEnd,   vEnd, // 右下
+      uStart, vStart, // 左上
+  
+      uStart, vStart, // 左上
+      uEnd,   vEnd,   // 右下
+      uEnd,   vStart  // 右上
     ]), gl.STATIC_DRAW);
-
+  
     gl.enableVertexAttribArray(this.a_texcoord);
-    gl.vertexAttribPointer(this.a_texcoord, 2, gl.FLOAT, false, 0, 0);    
+    gl.vertexAttribPointer(this.a_texcoord, 2, gl.FLOAT, false, 0, 0);
   }
   drawGl(entity, parentAlpha = 1) {
+    if (!entity.image) {
+      if (entity.children?.length) {
+        const sortedChildren = [...entity.children].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+        sortedChildren.forEach(child => this.drawGl(child, entity.alpha ?? 1));
+      }
+      return;
+    }
+  
+    const gl = this.gl;
+    const imgW = entity.frameWidth || entity.image.width;
+    const imgH = entity.frameHeight || entity.image.height;
+  
+    let ax = (entity.anchorX ?? 0.5) - 0.5;
+    let ay = (entity.anchorY ?? 0.5) - 0.5;
+  
+    const projection = this.createProjectionMatrix(gl.canvas.width, gl.canvas.height);
+    const worldMat = entity.getWorldMatrix();
+    const viewMat = Matrix2D.inverse(cameraMatrix);
+    const anchorMat = Matrix2D.identity()
+      .scale(imgW, imgH)
+      .translate(-ax, -ay);
+    const finalMat = projection.multiply(viewMat).multiply(worldMat).multiply(anchorMat);
+    const alpha = (entity.alpha ?? 1) * parentAlpha;
+  
+    // 使うシェーダーを選択
+    const useMask = !!entity.mask;
+    if (useMask) {
+      if (!this.maskedShader) this.maskedShader = this.createMaskedShaderProgram();
+      const shader = this.maskedShader;
+  
+      gl.useProgram(shader.program);
+      gl.uniformMatrix3fv(shader.u_matrix, false, this.matrix2dToUniform(finalMat));
+      gl.uniform1f(shader.u_alpha, alpha);
+  
+      const tex = this.getTexture(entity.image);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.uniform1i(shader.u_texture, 0);
+  
+      const maskTex = this.getTexture(entity.mask.image);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, maskTex);
+      gl.uniform1i(shader.u_mask, 1);
+  
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+      gl.enableVertexAttribArray(shader.a_position);
+      gl.vertexAttribPointer(shader.a_position, 2, gl.FLOAT, false, 0, 0);
+  
+      this.setSpriteUV(entity); // ※ entityのUVだけを使う
+  
+      gl.enableVertexAttribArray(shader.a_texcoord);
+      gl.vertexAttribPointer(shader.a_texcoord, 2, gl.FLOAT, false, 0, 0);
+  
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    } else {
+      gl.useProgram(this.program);
+      gl.uniformMatrix3fv(this.u_matrix, false, this.matrix2dToUniform(finalMat));
+      gl.uniform1f(this.u_alpha, alpha);
+  
+      const tex = this.getTexture(entity.image);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.uniform1i(this.u_texture, 0);
+  
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+      gl.enableVertexAttribArray(this.a_position);
+      gl.vertexAttribPointer(this.a_position, 2, gl.FLOAT, false, 0, 0);
+      this.setSpriteUV(entity);
+      gl.enableVertexAttribArray(this.a_texcoord);
+      gl.vertexAttribPointer(this.a_texcoord, 2, gl.FLOAT, false, 0, 0);
+  
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+  
+    if (entity.children?.length) {
+      const sortedChildren = [...entity.children].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+      sortedChildren.forEach(child => this.drawGl(child, alpha));
+    }
+  }
+  _drawGl(entity, parentAlpha = 1) {
     if (!entity.image){
       if (entity.children?.length) {
         const sortedChildren = [...entity.children].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
@@ -642,6 +809,7 @@ class WebGLRenderer {
     const gl = this.gl;
     const imgW = entity.frameWidth || entity.image.width;
     const imgH = entity.frameHeight || entity.image.height;
+    
     let ax = (entity.anchorX ?? 0.5) - 0.5;
     let ay = (entity.anchorY ?? 0.5) - 0.5;
 
@@ -778,6 +946,9 @@ class TouchState{
     this.touched = UNUSED;
     this.moving = UNUSED;
     this.released = UNUSED;
+    this.touchedLog = null;
+    this.movingLog = null;
+    this.releasedLog = null;
   }
   update(x,y,phase){
     if( phase == "touched" ){ 
@@ -788,26 +959,79 @@ class TouchState{
         this.moving = READY;
         this.x = x;
         this.y = y;
+        this.touchedLog = {x,y}
       }
     }else if( phase == "moving"){
       if( this.moving == READY ){
         console.log(`moving -> x: ${x}, y:${y}`)
         this.x = x;
         this.y = y;
+        this.movingLog = {x,y}
       }
     }else if( phase == "released"){
       if( this.released == UNUSED ){
-        console.log(`release -> x: ${x}, y:${y}`)
+        //console.log(`release -> x: ${x}, y:${y}`)
         this.released = READY;
         this.moving = UNUSED;
         this.touched = UNUSED;
         this.x = x;
         this.y = y;
+        this.releasedLog = {x,y}
+      }
+    }
+  }
+}
+
+class KeyState{
+  constructor(){
+    this.state = {};
+    this.log = {};
+  }
+  // そのkeyが、pressされたかどうかを、一回だけ取得する。
+  // gearのcheck側から取得するため、一回だけ返す形でないといけない。
+  pressed(name){
+    if( this.state[name].pressed == READY ){
+      this.state[name].pressed = USED;
+      return true;
+    }
+    return false;
+  }
+  // そのkeyが、releaseされたかどうかを、一回だけ取得する。
+  // gearのcheck側から取得するため、一回だけ返す形でないといけない。
+  released(name){
+    if( this.state[name].released == READY ){
+      this.state[name].released = USED;
+      return true;
+    }
+    return false;
+  }
+  prepare(name){
+    this.state[name] = { pressed: UNUSED, released: UNUSED, pressedTime: 0 }
+  }
+  update(name,phase){
+    if( !this.state[name] ){ return; } // 監視対象ではない
+
+    if( phase == "down" ){
+      if( this.state[name].pressed == UNUSED ){
+        this.state[name].pressed = READY;
+        this.state[name].released = UNUSED;
+        this.state[name].pressedTime = 1;
+        //console.log(`${name} pressed`)
+      }else{
+        this.state[name].pressedTime++;
+      }
+    }else if( phase == "up" ){
+      if( this.state[name].released == UNUSED ){
+        //console.log(`${name} released, ${this.state[name].pressedTime}`)
+        this.state[name].pressed = UNUSED;
+        this.state[name].released = READY;
+        this.state[name].pressedTime = 0;
       }
     }
   }
 }
 const touchState = new TouchState()
+const keyState = new KeyState()
 
 function initializeTouchInput(canvas) {
   canvas.addEventListener('touchstart', updateTouchPosition, false);
@@ -816,7 +1040,8 @@ function initializeTouchInput(canvas) {
   canvas.addEventListener('mousedown', updateTouchPosition, false);
   canvas.addEventListener('mousemove', updateMovePosition, false);
   canvas.addEventListener('mouseup', updateReleasePosition, false);
-
+  window.addEventListener('keydown', updateKeyDown, false);
+  window.addEventListener('keyup', updateKeyUp, false);
 }
 
 function screenXyToWorldXyFromEvent(event){
@@ -853,62 +1078,105 @@ function updateTouchPosition(event) {
   event.preventDefault?.();
 }
 
-export function useInput(type, target) {
-  if (type.includes("gamePad.")) {
-    type = type.replace("gamePad.", "");
-    if (type === "leftStick") {
-      return () => ({
-        pressed: leftStick.pressed,
-        pressedTime: leftStick.pressedTime,
-        angle: leftStick.angle,
-        magnitude: leftStick.magnitude
-      });
-    }
-    if (type === "rightStick") {
-      return () => ({
-        pressed: rightStick.pressed,
-        pressedTime: rightStick.pressedTime,
-        angle: rightStick.angle,
-        magnitude: rightStick.magnitude
-      });
-    }
-    if (!(type in padMap)) {
-      console.warn(`useInput: Unknown button type: ${type}`);
-      return () => ({ pressed: false, pressedTime: 0 });
-    }
-    return () => ({
-      pressed: padState[type].pressed,
-      pressedTime: padState[type].pressedTime
-    });
-  }else if(type == "touchState"){
-    return () => ({
-      x: touchState.x,
-      y: touchState.y,
-      touchState: touchState
-    });
-  }else if(type.includes("touchMe")) {
-    const phase = type.split(".")[1]
+const keyMap = {
+  "↑": "ArrowUp",
+  "↓": "ArrowDown",
+  "←": "ArrowLeft",
+  "→": "ArrowRight",
+  " ": " ",
+  "Enter": "Enter",
+  "Esc": "Escape"
+};
+function convertKeyName(name){
+  return keyMap[name]? keyMap[name]:name;
+}
 
-    if( phase == "pressed" || phase == "released" ){
-      if( touchState.released != READY ){
-        return false;
-      }
-      const touchedEntities = entities.filter(entity => {
-        const { x, y, width, height } = entity.getBoundingBox();
-        return (
-          touchState.x >= x - width/2 &&
-          touchState.x <= x + width/2 &&
-          touchState.y >= y - height/2 &&
-          touchState.y <= y + height/2
-        );
-      });
-      const hit =  touchedEntities.some(ent => ent.uuid === target.uuid );
-      if( hit ){
-        touchState.reset();
-      }
-      return hit;
-    }
+function updateKeyDown(event){
+  keyState.update(convertKeyName(event.key), "down")
+}
+
+function updateKeyUp(event){
+  keyState.update(convertKeyName(event.key), "up")
+}
+
+// leftStickの状態を表すオブジェクトを返す関数を生成
+export function useLeftStick(){
+  return () => ({
+    pressed: leftStick.pressed,
+    pressedTime: leftStick.pressedTime,
+    angle: leftStick.angle,
+    magnitude: leftStick.magnitude
+  });
+}
+
+export function useRightStick(){
+  return () => ({
+    pressed: rightStick.pressed,
+    pressedTime: rightStick.pressedTime,
+    angle: rightStick.angle,
+    magnitude: rightStick.magnitude
+  });
+}
+
+export function useGamePadButton(name){
+  if (!(name in padMap)) {
+    console.warn(`useInput: Unknown button type: ${name}`);
+    return () => ({ pressed: false, pressedTime: 0 });
   }
+  return () => ({
+    pressed: padState[name].pressed,
+    pressedTime: padState[name].pressedTime
+  });
+}
+
+// マウスとタッチのスタート時のオブジェクトを返す
+export function useTouchStart(){
+  if( touchState.movingLog != null ) return false;
+  if( touchState.releasedLog != null ) return false;
+  return touchState.touchedLog != null ? touchState.touchedLog : false;
+}
+
+// マウスとタッチのドラッグ中のオブジェクトを返す
+export function useTouchDrag(){
+  if( touchState.releasedLog != null ) return false;
+  return touchState.movingLog != null ? touchState.movingLog : false;
+}
+
+// マウスとタッチのリリース時のオブジェクトを返す
+export function useTouchEnd(){
+  return touchState.releasedLog != null ? touchState.releasedLog : false;
+}
+
+// x,yを渡して、hitしたEntityを返す
+export function useTouchEntity(x,y){
+  const touchedEntities = entities.filter(entity => {
+    const { x, y, width, height } = entity.getBoundingBox();
+    return (
+      touchState.x >= x - width/2 &&
+      touchState.x <= x + width/2 &&
+      touchState.y >= y - height/2 &&
+      touchState.y <= y + height/2
+    );
+  });
+  return touchedEntities;  
+}
+
+export function useKeyPressed(name){
+  const keyName = convertKeyName(name)
+  keyState.prepare(keyName)
+  return ()=> keyState.pressed(keyName)
+}
+
+export function useKeyReleased(name){
+  const keyName = convertKeyName(name)
+  keyState.prepare(keyName)
+  return ()=> keyState.released(keyName)
+}
+
+export function useKeyHold(name){
+  const keyName = convertKeyName(name)
+  keyState.prepare(keyName)
+  return () => keyState.state[keyName]?.pressedTime > 0
 }
 
 // sounds and music
